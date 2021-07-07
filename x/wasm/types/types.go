@@ -297,23 +297,6 @@ func NewWasmCoins(cosmosCoins sdk.Coins) (wasmCoins []wasmvmtypes.Coin) {
 	return wasmCoins
 }
 
-// ParseEvents converts wasm LogAttributes into an sdk.Events. Returns events and number of bytes for custom attributes
-func ParseEvents(wasmOutputAttrs []wasmvmtypes.EventAttribute, contractAddr sdk.AccAddress) sdk.Events {
-	// we always tag with the contract address issuing this event
-	attrs := []sdk.Attribute{sdk.NewAttribute(AttributeKeyContractAddr, contractAddr.String())}
-	// append attributes from wasm to the sdk.Event
-	for _, l := range wasmOutputAttrs {
-		// and reserve the contract_address key for our use (not contract)
-		if l.Key != AttributeKeyContractAddr {
-			attr := sdk.NewAttribute(l.Key, l.Value)
-			attrs = append(attrs, attr)
-		}
-	}
-
-	// each wasm invokation always returns one sdk.Event
-	return sdk.Events{sdk.NewEvent(CustomEventType, attrs...)}
-}
-
 // WasmConfig is the extra config required for wasm
 type WasmConfig struct {
 	SmartQueryGasLimit uint64

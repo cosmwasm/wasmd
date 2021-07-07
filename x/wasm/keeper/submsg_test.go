@@ -57,7 +57,7 @@ func TestDispatchSubMsgSuccessCase(t *testing.T) {
 		},
 	}
 	reflectSend := ReflectHandleMsg{
-		ReflectSubCall: &reflectSubPayload{
+		ReflectSubMsg: &reflectSubPayload{
 			Msgs: []wasmvmtypes.SubMsg{{
 				ID:      7,
 				Msg:     msg,
@@ -78,7 +78,7 @@ func TestDispatchSubMsgSuccessCase(t *testing.T) {
 
 	// query the reflect state to ensure the result was stored
 	query := ReflectQueryMsg{
-		SubCallResult: &SubCall{ID: 7},
+		SubMsgResult: &SubCall{ID: 7},
 	}
 	queryBz, err := json.Marshal(query)
 	require.NoError(t, err)
@@ -318,7 +318,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 
 			msg := tc.msg(contractAddr.String(), empty.String())
 			reflectSend := ReflectHandleMsg{
-				ReflectSubCall: &reflectSubPayload{
+				ReflectSubMsg: &reflectSubPayload{
 					Msgs: []wasmvmtypes.SubMsg{{
 						ID:       tc.submsgID,
 						Msg:      msg,
@@ -349,7 +349,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 
 				// query the reply
 				query := ReflectQueryMsg{
-					SubCallResult: &SubCall{ID: tc.submsgID},
+					SubMsgResult: &SubCall{ID: tc.submsgID},
 				}
 				queryBz, err := json.Marshal(query)
 				require.NoError(t, err)
@@ -421,7 +421,7 @@ func TestDispatchSubMsgEncodeToNoSdkMsg(t *testing.T) {
 		},
 	}
 	reflectSend := ReflectHandleMsg{
-		ReflectSubCall: &reflectSubPayload{
+		ReflectSubMsg: &reflectSubPayload{
 			Msgs: []wasmvmtypes.SubMsg{{
 				ID:      7,
 				Msg:     msg,
@@ -436,7 +436,7 @@ func TestDispatchSubMsgEncodeToNoSdkMsg(t *testing.T) {
 
 	// query the reflect state to ensure the result was stored
 	query := ReflectQueryMsg{
-		SubCallResult: &SubCall{ID: 7},
+		SubMsgResult: &SubCall{ID: 7},
 	}
 	queryBz, err := json.Marshal(query)
 	require.NoError(t, err)
@@ -547,7 +547,7 @@ func TestDispatchSubMsgConditionalReplyOn(t *testing.T) {
 			}
 
 			reflectSend := ReflectHandleMsg{
-				ReflectSubCall: &reflectSubPayload{
+				ReflectSubMsg: &reflectSubPayload{
 					Msgs: []wasmvmtypes.SubMsg{subMsg},
 				},
 			}
@@ -563,7 +563,7 @@ func TestDispatchSubMsgConditionalReplyOn(t *testing.T) {
 
 			// query the reflect state to check if the result was stored
 			query := ReflectQueryMsg{
-				SubCallResult: &SubCall{ID: id},
+				SubMsgResult: &SubCall{ID: id},
 			}
 			queryBz, err := json.Marshal(query)
 			require.NoError(t, err)

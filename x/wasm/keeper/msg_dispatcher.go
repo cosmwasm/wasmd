@@ -76,12 +76,14 @@ func (d MessageDispatcher) DispatchSubmessages(ctx sdk.Context, contractAddr sdk
 	var rsp []byte
 	for _, msg := range msgs {
 		switch msg.ReplyOn {
-		case wasmvmtypes.ReplySuccess, wasmvmtypes.ReplyError, wasmvmtypes.ReplyAlways:
+		case wasmvmtypes.ReplySuccess, wasmvmtypes.ReplyError, wasmvmtypes.ReplyAlways, wasmvmtypes.ReplyNever:
 		default:
 			return nil, sdkerrors.Wrap(types.ErrInvalid, "replyOn value")
 		}
 		// first, we build a sub-context which we can use inside the submessages
 		subCtx, commit := ctx.CacheContext()
+		em := sdk.NewEventManager()
+		subCtx = subCtx.WithEventManager(em)
 
 		// check how much gas left locally, optionally wrap the gas meter
 		gasRemaining := ctx.GasMeter().Limit() - ctx.GasMeter().GasConsumed()
@@ -99,15 +101,15 @@ func (d MessageDispatcher) DispatchSubmessages(ctx sdk.Context, contractAddr sdk
 		// if it succeeds, commit state changes from submessage, and pass on events to Event Manager
 		if err == nil {
 			commit()
+			ctx.EventManager().EmitEvents(em.Events())
 			ctx.EventManager().EmitEvents(events)
-		}
-		// on failure, revert state from sandbox, and ignore events (just skip doing the above)
+		} // on failure, revert state from sandbox, and ignore events (just skip doing the above)
 
-		// we only callback if requested. Short-circuit here the two cases we don't want to
-		if msg.ReplyOn == wasmvmtypes.ReplySuccess && err != nil {
+		// we only callback if requested. Short-circuit here the cases we don't want to
+		if (msg.ReplyOn == wasmvmtypes.ReplySuccess || msg.ReplyOn == wasmvmtypes.ReplyNever) && err != nil {
 			return nil, err
 		}
-		if msg.ReplyOn == wasmvmtypes.ReplyError && err == nil {
+		if msg.ReplyOn == wasmvmtypes.ReplyNever || (msg.ReplyOn == wasmvmtypes.ReplyError && err == nil) {
 			continue
 		}
 

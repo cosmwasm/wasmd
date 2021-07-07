@@ -10,6 +10,7 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	ibctransfertypes "github.com/cosmos/cosmos-sdk/x/ibc/applications/transfer/types"
 	ibcclienttypes "github.com/cosmos/cosmos-sdk/x/ibc/core/02-client/types"
 	channeltypes "github.com/cosmos/cosmos-sdk/x/ibc/core/04-channel/types"
@@ -32,6 +33,7 @@ type MessageEncoders struct {
 	Staking      func(sender sdk.AccAddress, msg *wasmvmtypes.StakingMsg) ([]sdk.Msg, error)
 	Stargate     func(sender sdk.AccAddress, msg *wasmvmtypes.StargateMsg) ([]sdk.Msg, error)
 	Wasm         func(sender sdk.AccAddress, msg *wasmvmtypes.WasmMsg) ([]sdk.Msg, error)
+	Gov          func(sender sdk.AccAddress, msg *wasmvmtypes.GovMsg) ([]sdk.Msg, error)
 }
 
 func DefaultEncoders(unpacker codectypes.AnyUnpacker, portSource types.ICS20TransferPortSource) MessageEncoders {
@@ -43,6 +45,7 @@ func DefaultEncoders(unpacker codectypes.AnyUnpacker, portSource types.ICS20Tran
 		Staking:      EncodeStakingMsg,
 		Stargate:     EncodeStargateMsg(unpacker),
 		Wasm:         EncodeWasmMsg,
+		Gov:          EncodeGovMsg,
 	}
 }
 
@@ -71,6 +74,9 @@ func (e MessageEncoders) Merge(o *MessageEncoders) MessageEncoders {
 	if o.Wasm != nil {
 		e.Wasm = o.Wasm
 	}
+	if o.Gov != nil {
+		e.Gov = o.Gov
+	}
 	return e
 }
 
@@ -90,6 +96,8 @@ func (e MessageEncoders) Encode(ctx sdk.Context, contractAddr sdk.AccAddress, co
 		return e.Stargate(contractAddr, msg.Stargate)
 	case msg.Wasm != nil:
 		return e.Wasm(contractAddr, msg.Wasm)
+	case msg.Gov != nil:
+		return EncodeGovMsg(contractAddr, msg.Gov)
 	}
 	return nil, sdkerrors.Wrap(types.ErrUnknownMsg, "unknown variant of Wasm")
 }
@@ -198,7 +206,7 @@ func EncodeStargateMsg(unpacker codectypes.AnyUnpacker) StargateEncoder {
 func EncodeWasmMsg(sender sdk.AccAddress, msg *wasmvmtypes.WasmMsg) ([]sdk.Msg, error) {
 	switch {
 	case msg.Execute != nil:
-		coins, err := convertWasmCoinsToSdkCoins(msg.Execute.Send)
+		coins, err := convertWasmCoinsToSdkCoins(msg.Execute.Funds)
 		if err != nil {
 			return nil, err
 		}
@@ -211,7 +219,7 @@ func EncodeWasmMsg(sender sdk.AccAddress, msg *wasmvmtypes.WasmMsg) ([]sdk.Msg, 
 		}
 		return []sdk.Msg{&sdkMsg}, nil
 	case msg.Instantiate != nil:
-		coins, err := convertWasmCoinsToSdkCoins(msg.Instantiate.Send)
+		coins, err := convertWasmCoinsToSdkCoins(msg.Instantiate.Funds)
 		if err != nil {
 			return nil, err
 		}
@@ -280,6 +288,27 @@ func EncodeIBCMsg(portSource types.ICS20TransferPortSource) func(ctx sdk.Context
 		}
 	}
 }
+
+func EncodeGovMsg(sender sdk.AccAddress, msg *wasmvmtypes.GovMsg) ([]sdk.Msg, error) {
+	var option govtypes.VoteOption
+	switch msg.Vote.Vote {
+	case wasmvmtypes.Yes:
+		option = govtypes.OptionYes
+	case wasmvmtypes.No:
+		option = govtypes.OptionNo
+	case wasmvmtypes.NoWithVeto:
+		option = govtypes.OptionNoWithVeto
+	case wasmvmtypes.Abstain:
+		option = govtypes.OptionAbstain
+	}
+	vote := &govtypes.MsgVote{
+		ProposalId: msg.Vote.ProposalId,
+		Voter:      sender.String(),
+		Option:     option,
+	}
+	return []sdk.Msg{vote}, nil
+}
+
 func convertWasmIBCTimeoutHeightToCosmosHeight(ibcTimeoutBlock *wasmvmtypes.IBCTimeoutBlock) ibcclienttypes.Height {
 	if ibcTimeoutBlock == nil {
 		return ibcclienttypes.NewHeight(0, 0)

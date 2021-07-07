@@ -29,6 +29,8 @@ const (
 	DefaultContractMessageDataCost uint64 = 1
 	// DefaultPerAttributeCost is how much SDK gas we charge per attribute count.
 	DefaultPerAttributeCost uint64 = 10
+	// DefaultPerCustomEventCost is how much SDK gas we charge per event count.
+	DefaultPerCustomEventCost uint64 = 20
 	// DefaultEventAttributeDataFreeTier number of bytes of total attribute data we do not charge.
 	DefaultEventAttributeDataFreeTier = 100
 )
@@ -44,7 +46,7 @@ type GasRegister interface {
 	// ReplyCosts costs to to handle a message reply
 	ReplyCosts(pinned bool, reply wasmvmtypes.Reply) sdk.Gas
 	// EventCosts costs to persist an event
-	EventCosts(evts []wasmvmtypes.EventAttribute) sdk.Gas
+	EventCosts(attrs []wasmvmtypes.EventAttribute, events wasmvmtypes.Events) sdk.Gas
 	// ToWasmVMGas converts from sdk gas to wasmvm gas
 	ToWasmVMGas(source sdk.Gas) uint64
 	// FromWasmVMGas converts from wasmvm gas to sdk gas
@@ -67,10 +69,12 @@ type WasmGasRegisterConfig struct {
 	// This is used with len(key) + len(value)
 	EventAttributeDataCost sdk.Gas
 	// EventAttributeDataFreeTier number of bytes of total attribute data that is free of charge
-	EventAttributeDataFreeTier int
+	EventAttributeDataFreeTier uint64
 	// ContractMessageDataCost SDK gas charged *per byte* of the message that goes to the contract
 	// This is used with len(msg)
 	ContractMessageDataCost sdk.Gas
+	// CustomEventCost cost per custom event
+	CustomEventCost uint64
 }
 
 // DefaultGasRegisterConfig default values
@@ -80,6 +84,7 @@ func DefaultGasRegisterConfig() WasmGasRegisterConfig {
 		CompileCost:                DefaultCompileCost,
 		GasMultiplier:              DefaultGasMultiplier,
 		EventPerAttributeCost:      DefaultPerAttributeCost,
+		CustomEventCost:            DefaultPerCustomEventCost,
 		EventAttributeDataCost:     DefaultEventAttributeDataCost,
 		EventAttributeDataFreeTier: DefaultEventAttributeDataFreeTier,
 		ContractMessageDataCost:    DefaultContractMessageDataCost,
@@ -143,33 +148,49 @@ func (g WasmGasRegister) ReplyCosts(pinned bool, reply wasmvmtypes.Reply) sdk.Ga
 			attrs = append(e.Attributes)
 		}
 		// apply free tier on the whole set not per event
-		eventGas += g.EventCosts(attrs)
+		eventGas += g.EventCosts(attrs, nil)
 	}
 	return eventGas + g.InstantiateContractCosts(pinned, msgLen)
 }
 
 // EventCosts costs to persist an event
-func (g WasmGasRegister) EventCosts(evts []wasmvmtypes.EventAttribute) sdk.Gas {
-	if len(evts) == 0 {
-		return 0
+func (g WasmGasRegister) EventCosts(attrs []wasmvmtypes.EventAttribute, events wasmvmtypes.Events) sdk.Gas {
+	gas, remainingFreeTier := g.eventAttributeCosts(attrs, g.c.EventAttributeDataFreeTier)
+	for _, e := range events {
+		gas += g.c.CustomEventCost
+		gas += sdk.Gas(len(e.Type)) * g.c.EventAttributeDataCost // no free tier with event type
+		var attrCost sdk.Gas
+		attrCost, remainingFreeTier = g.eventAttributeCosts(e.Attributes, remainingFreeTier)
+		gas += attrCost
 	}
-	var storedBytes int
-	for _, l := range evts {
-		storedBytes += len(l.Key) + len(l.Value)
+	return gas
+}
+
+func (g WasmGasRegister) eventAttributeCosts(attrs []wasmvmtypes.EventAttribute, freeTier uint64) (sdk.Gas, uint64) {
+	if len(attrs) == 0 {
+		return 0, freeTier
 	}
-	// apply free tier
-	if storedBytes <= g.c.EventAttributeDataFreeTier {
-		storedBytes = 0
-	} else {
-		storedBytes -= g.c.EventAttributeDataFreeTier
+	var storedBytes uint64
+	for _, l := range attrs {
+		storedBytes += uint64(len(l.Key)) + uint64(len(l.Value))
 	}
+	storedBytes, freeTier = calcWithFreeTier(storedBytes, freeTier)
 	// total Length * costs + attribute count * costs
-	r := sdk.NewIntFromUint64(g.c.EventAttributeDataCost).Mul(sdk.NewIntFromUint64(uint64(storedBytes))).
-		Add(sdk.NewIntFromUint64(g.c.EventPerAttributeCost).Mul(sdk.NewIntFromUint64(uint64(len(evts)))))
+	r := sdk.NewIntFromUint64(g.c.EventAttributeDataCost).Mul(sdk.NewIntFromUint64(storedBytes)).
+		Add(sdk.NewIntFromUint64(g.c.EventPerAttributeCost).Mul(sdk.NewIntFromUint64(uint64(len(attrs)))))
 	if !r.IsUint64() {
 		panic(sdk.ErrorOutOfGas{Descriptor: "overflow"})
 	}
-	return r.Uint64()
+	return r.Uint64(), freeTier
+}
+
+// apply free tier
+func calcWithFreeTier(storedBytes uint64, freeTier uint64) (uint64, uint64) {
+	if storedBytes <= freeTier {
+		return 0, freeTier - storedBytes
+	}
+	storedBytes -= freeTier
+	return storedBytes, 0
 }
 
 // ToWasmVMGas convert to wasmVM contract runtime gas unit

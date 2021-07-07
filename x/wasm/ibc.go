@@ -195,14 +195,14 @@ func (i IBCHandler) OnRecvPacket(
 	if err != nil {
 		return nil, nil, sdkerrors.Wrapf(err, "contract port id")
 	}
-	msgBz, err := i.keeper.OnRecvPacket(ctx, contractAddr, newIBCPacket(packet))
+	ack, err := i.keeper.OnRecvPacket(ctx, contractAddr, newIBCPacket(packet))
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return &sdk.Result{
+	return &sdk.Result{ // the response is ignored
 		Events: ctx.EventManager().Events().ToABCIEvents(),
-	}, msgBz, nil
+	}, ack, nil
 }
 
 // OnAcknowledgementPacket implements the IBCModule interface
@@ -212,8 +212,8 @@ func (i IBCHandler) OnAcknowledgementPacket(ctx sdk.Context, packet channeltypes
 		return nil, sdkerrors.Wrapf(err, "contract port id")
 	}
 
-	err = i.keeper.OnAckPacket(ctx, contractAddr, wasmvmtypes.IBCAcknowledgement{
-		Acknowledgement: acknowledgement,
+	err = i.keeper.OnAckPacket(ctx, contractAddr, wasmvmtypes.IBCAcknowledgementWithPacket{
+		Acknowledgement: wasmvmtypes.IBCAcknowledgement{Data: acknowledgement},
 		OriginalPacket:  newIBCPacket(packet),
 	})
 	if err != nil {

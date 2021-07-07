@@ -44,7 +44,7 @@ func (m MockGasRegister) ReplyCosts(pinned bool, reply wasmvmtypes.Reply) sdk.Ga
 	return m.ReplyCostFn(pinned, reply)
 }
 
-func (m MockGasRegister) EventCosts(evts []wasmvmtypes.EventAttribute) sdk.Gas {
+func (m MockGasRegister) EventCosts(evts []wasmvmtypes.EventAttribute, events wasmvmtypes.Events) sdk.Gas {
 	if m.EventCostsFn == nil {
 		panic("not expected to be called")
 	}

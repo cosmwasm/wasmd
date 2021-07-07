@@ -1,7 +1,7 @@
 package types
 
 import (
-	types2 "github.com/CosmWasm/wasmvm/types"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
 	"github.com/cosmos/cosmos-sdk/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	capabilitytypes "github.com/cosmos/cosmos-sdk/x/capability/types"
@@ -58,32 +58,32 @@ type IBCContractKeeper interface {
 	OnOpenChannel(
 		ctx sdk.Context,
 		contractAddr sdk.AccAddress,
-		channel types2.IBCChannel,
+		channel wasmvmtypes.IBCChannel,
 	) error
 	OnConnectChannel(
 		ctx sdk.Context,
 		contractAddr sdk.AccAddress,
-		channel types2.IBCChannel,
+		channel wasmvmtypes.IBCChannel,
 	) error
 	OnCloseChannel(
 		ctx sdk.Context,
 		contractAddr sdk.AccAddress,
-		channel types2.IBCChannel,
+		channel wasmvmtypes.IBCChannel,
 	) error
 	OnRecvPacket(
 		ctx sdk.Context,
 		contractAddr sdk.AccAddress,
-		packet types2.IBCPacket,
+		packet wasmvmtypes.IBCPacket,
 	) ([]byte, error)
 	OnAckPacket(
 		ctx sdk.Context,
 		contractAddr sdk.AccAddress,
-		acknowledgement types2.IBCAcknowledgement,
+		acknowledgement wasmvmtypes.IBCAcknowledgementWithPacket,
 	) error
 	OnTimeoutPacket(
 		ctx sdk.Context,
 		contractAddr sdk.AccAddress,
-		packet types2.IBCPacket,
+		packet wasmvmtypes.IBCPacket,
 	) error
 	// ClaimCapability allows the transfer module to claim a capability
 	//that IBC module passes to it

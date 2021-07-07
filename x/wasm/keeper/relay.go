@@ -30,7 +30,7 @@ func (k Keeper) OnOpenChannel(
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gas := k.runtimeGasForContract(ctx)
-	gasUsed, execErr := k.wasmVM.IBCChannelOpen(codeInfo.CodeHash, env, channel, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas)
+	gasUsed, execErr := k.wasmVM.IBCChannelOpen(codeInfo.CodeHash, env, channel, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
@@ -61,7 +61,7 @@ func (k Keeper) OnConnectChannel(
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, execErr := k.wasmVM.IBCChannelConnect(codeInfo.CodeHash, env, channel, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas)
+	res, gasUsed, execErr := k.wasmVM.IBCChannelConnect(codeInfo.CodeHash, env, channel, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
@@ -92,7 +92,7 @@ func (k Keeper) OnCloseChannel(
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, execErr := k.wasmVM.IBCChannelClose(codeInfo.CodeHash, params, channel, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas)
+	res, gasUsed, execErr := k.wasmVM.IBCChannelClose(codeInfo.CodeHash, params, channel, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
@@ -122,13 +122,13 @@ func (k Keeper) OnRecvPacket(
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, execErr := k.wasmVM.IBCPacketReceive(codeInfo.CodeHash, env, packet, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas)
+	res, gasUsed, execErr := k.wasmVM.IBCPacketReceive(codeInfo.CodeHash, env, packet, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return nil, sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
 	}
-
-	return k.handleContractResponse(ctx, contractAddr, contractInfo.IBCPortID, res.Submessages, res.Messages, res.Attributes, res.Acknowledgement)
+	// note submessage reply results can overwrite the `Acknowledgement` data
+	return k.handleContractResponse(ctx, contractAddr, contractInfo.IBCPortID, res.Messages, res.Attributes, res.Acknowledgement, nil)
 }
 
 // OnAckPacket calls the contract to handle the "acknowledgement" data which can contain success or failure of a packet
@@ -141,7 +141,7 @@ func (k Keeper) OnRecvPacket(
 func (k Keeper) OnAckPacket(
 	ctx sdk.Context,
 	contractAddr sdk.AccAddress,
-	acknowledgement wasmvmtypes.IBCAcknowledgement,
+	acknowledgement wasmvmtypes.IBCAcknowledgementWithPacket,
 ) error {
 	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "ibc-ack-packet")
 	contractInfo, codeInfo, prefixStore, err := k.contractInstance(ctx, contractAddr)
@@ -153,7 +153,7 @@ func (k Keeper) OnAckPacket(
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, execErr := k.wasmVM.IBCPacketAck(codeInfo.CodeHash, env, acknowledgement, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas)
+	res, gasUsed, execErr := k.wasmVM.IBCPacketAck(codeInfo.CodeHash, env, acknowledgement, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
@@ -180,7 +180,7 @@ func (k Keeper) OnTimeoutPacket(
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, execErr := k.wasmVM.IBCPacketTimeout(codeInfo.CodeHash, env, packet, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas)
+	res, gasUsed, execErr := k.wasmVM.IBCPacketTimeout(codeInfo.CodeHash, env, packet, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
@@ -190,6 +190,6 @@ func (k Keeper) OnTimeoutPacket(
 }
 
 func (k Keeper) handleIBCBasicContractResponse(ctx sdk.Context, addr sdk.AccAddress, id string, res *wasmvmtypes.IBCBasicResponse) error {
-	_, err := k.handleContractResponse(ctx, addr, id, res.Submessages, res.Messages, res.Attributes, nil)
+	_, err := k.handleContractResponse(ctx, addr, id, res.Messages, res.Attributes, nil, nil)
 	return err
 }

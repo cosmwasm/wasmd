@@ -22,7 +22,7 @@ const (
 	MaxLabelSize                    = types.MaxLabelSize
 	BuildTagRegexp                  = types.BuildTagRegexp
 	MaxBuildTagSize                 = types.MaxBuildTagSize
-	CustomEventType                 = types.CustomEventType
+	WasmModuleEventType             = types.WasmModuleEventType
 	AttributeKeyContractAddr        = types.AttributeKeyContractAddr
 	ProposalTypeStoreCode           = types.ProposalTypeStoreCode
 	ProposalTypeInstantiateContract = types.ProposalTypeInstantiateContract
@@ -53,7 +53,6 @@ var (
 	NewContractInfo           = types.NewContractInfo
 	NewEnv                    = types.NewEnv
 	NewWasmCoins              = types.NewWasmCoins
-	ParseEvents               = types.ParseEvents
 	DefaultWasmConfig         = types.DefaultWasmConfig
 	DefaultParams             = types.DefaultParams
 	InitGenesis               = keeper.InitGenesis

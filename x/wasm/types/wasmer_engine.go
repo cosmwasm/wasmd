@@ -31,7 +31,7 @@ type WasmerEngine interface {
 	// Under the hood, we may recompile the wasm, use a cached native compile, or even use a cached instance
 	// for performance.
 	Instantiate(
-		code wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		info wasmvmtypes.MessageInfo,
 		initMsg []byte,
@@ -40,6 +40,7 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.Response, uint64, error)
 
 	// Execute calls a given contract. Since the only difference between contracts with the same CodeID is the
@@ -58,6 +59,7 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.Response, uint64, error)
 
 	// Query allows a client to execute a contract-specific query. If the result is not empty, it should be
@@ -72,6 +74,7 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) ([]byte, uint64, error)
 
 	// Migrate will migrate an existing contract to a new code binary.
@@ -81,7 +84,7 @@ type WasmerEngine interface {
 	//
 	// MigrateMsg has some data on how to perform the migration.
 	Migrate(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		migrateMsg []byte,
 		store wasmvm.KVStore,
@@ -89,6 +92,7 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.Response, uint64, error)
 
 	// Sudo runs an existing contract in read/write mode (like Execute), but is never exposed to external callers
@@ -97,7 +101,7 @@ type WasmerEngine interface {
 	// This allows a contract to expose custom "super user" functions or priviledged operations that can be
 	// deeply integrated with native modules.
 	Sudo(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		sudoMsg []byte,
 		store wasmvm.KVStore,
@@ -105,11 +109,12 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.Response, uint64, error)
 
 	// Reply is called on the original dispatching contract after running a submessage
 	Reply(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		reply wasmvmtypes.Reply,
 		store wasmvm.KVStore,
@@ -117,6 +122,7 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.Response, uint64, error)
 
 	// GetCode will load the original wasm code for the given code id.
@@ -134,7 +140,7 @@ type WasmerEngine interface {
 	// IBCChannelOpen is available on IBC-enabled contracts and is a hook to call into
 	// during the handshake pahse
 	IBCChannelOpen(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		channel wasmvmtypes.IBCChannel,
 		store wasmvm.KVStore,
@@ -142,12 +148,13 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (uint64, error)
 
 	// IBCChannelConnect is available on IBC-enabled contracts and is a hook to call into
 	// during the handshake pahse
 	IBCChannelConnect(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		channel wasmvmtypes.IBCChannel,
 		store wasmvm.KVStore,
@@ -155,12 +162,13 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.IBCBasicResponse, uint64, error)
 
 	// IBCChannelClose is available on IBC-enabled contracts and is a hook to call into
 	// at the end of the channel lifetime
 	IBCChannelClose(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		channel wasmvmtypes.IBCChannel,
 		store wasmvm.KVStore,
@@ -168,12 +176,13 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.IBCBasicResponse, uint64, error)
 
 	// IBCPacketReceive is available on IBC-enabled contracts and is called when an incoming
 	// packet is received on a channel belonging to this contract
 	IBCPacketReceive(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		packet wasmvmtypes.IBCPacket,
 		store wasmvm.KVStore,
@@ -181,26 +190,29 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.IBCReceiveResponse, uint64, error)
+
 	// IBCPacketAck is available on IBC-enabled contracts and is called when an
 	// the response for an outgoing packet (previously sent by this contract)
 	// is received
 	IBCPacketAck(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
-		ack wasmvmtypes.IBCAcknowledgement,
+		ack wasmvmtypes.IBCAcknowledgementWithPacket,
 		store wasmvm.KVStore,
 		goapi wasmvm.GoAPI,
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.IBCBasicResponse, uint64, error)
 
 	// IBCPacketTimeout is available on IBC-enabled contracts and is called when an
 	// outgoing packet (previously sent by this contract) will provably never be executed.
 	// Usually handled like ack returning an error
 	IBCPacketTimeout(
-		codeID wasmvm.Checksum,
+		checksum wasmvm.Checksum,
 		env wasmvmtypes.Env,
 		packet wasmvmtypes.IBCPacket,
 		store wasmvm.KVStore,
@@ -208,6 +220,7 @@ type WasmerEngine interface {
 		querier wasmvm.Querier,
 		gasMeter wasmvm.GasMeter,
 		gasLimit uint64,
+		deserCost wasmvmtypes.UFraction,
 	) (*wasmvmtypes.IBCBasicResponse, uint64, error)
 
 	// Pin pins a code to an in-memory cache, such that is

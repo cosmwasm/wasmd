@@ -364,9 +364,9 @@ func TestBurnCoinMessageHandlerIntegration(t *testing.T) {
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
 			ctx, _ = parentCtx.CacheContext()
-			k.wasmVM = &wasmtesting.MockWasmer{ExecuteFn: func(codeID wasmvm.Checksum, env wasmvmtypes.Env, info wasmvmtypes.MessageInfo, executeMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64) (*wasmvmtypes.Response, uint64, error) {
-				return &wasmvmtypes.Response{Messages: []wasmvmtypes.CosmosMsg{
-					{Bank: &wasmvmtypes.BankMsg{Burn: &spec.msg}},
+			k.wasmVM = &wasmtesting.MockWasmer{ExecuteFn: func(codeID wasmvm.Checksum, env wasmvmtypes.Env, info wasmvmtypes.MessageInfo, executeMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (*wasmvmtypes.Response, uint64, error) {
+				return &wasmvmtypes.Response{Messages: []wasmvmtypes.SubMsg{
+					{Msg: wasmvmtypes.CosmosMsg{Bank: &wasmvmtypes.BankMsg{Burn: &spec.msg}}, ReplyOn: wasmvmtypes.ReplyNever},
 				},
 				}, 0, nil
 			}}

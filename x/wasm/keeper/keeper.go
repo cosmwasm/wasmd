@@ -47,8 +47,7 @@ type WasmVMResponseHandler interface {
 		ctx sdk.Context,
 		contractAddr sdk.AccAddress,
 		ibcPort string,
-		submessages []wasmvmtypes.SubMsg,
-		messages []wasmvmtypes.CosmosMsg,
+		messages []wasmvmtypes.SubMsg,
 		origRspData []byte,
 	) ([]byte, error)
 }
@@ -259,7 +258,7 @@ func (k Keeper) instantiate(ctx sdk.Context, codeID uint64, creator, admin sdk.A
 
 	// instantiate wasm contract
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, err := k.wasmVM.Instantiate(codeInfo.CodeHash, env, info, initMsg, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas)
+	res, gasUsed, err := k.wasmVM.Instantiate(codeInfo.CodeHash, env, info, initMsg, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if err != nil {
 		return contractAddress, nil, sdkerrors.Wrap(types.ErrInstantiateFailed, err.Error())
@@ -290,7 +289,7 @@ func (k Keeper) instantiate(ctx sdk.Context, codeID uint64, creator, admin sdk.A
 	k.storeContractInfo(ctx, contractAddress, &contractInfo)
 
 	// dispatch submessages then messages
-	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Submessages, res.Messages, res.Attributes, res.Data)
+	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Messages, res.Attributes, res.Data, res.Events)
 	if err != nil {
 		return nil, nil, sdkerrors.Wrap(err, "dispatch")
 	}
@@ -322,14 +321,14 @@ func (k Keeper) execute(ctx sdk.Context, contractAddress sdk.AccAddress, caller 
 	// prepare querier
 	querier := k.newQueryHandler(ctx, contractAddress)
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, execErr := k.wasmVM.Execute(codeInfo.CodeHash, env, info, msg, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas)
+	res, gasUsed, execErr := k.wasmVM.Execute(codeInfo.CodeHash, env, info, msg, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return nil, sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
 	}
 
 	// dispatch submessages then messages
-	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Submessages, res.Messages, res.Attributes, res.Data)
+	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Messages, res.Attributes, res.Data, res.Events)
 	if err != nil {
 		return nil, sdkerrors.Wrap(err, "dispatch")
 	}
@@ -378,7 +377,7 @@ func (k Keeper) migrate(ctx sdk.Context, contractAddress sdk.AccAddress, caller 
 	prefixStoreKey := types.GetContractStorePrefix(contractAddress)
 	prefixStore := prefix.NewStore(ctx.KVStore(k.storeKey), prefixStoreKey)
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, err := k.wasmVM.Migrate(newCodeInfo.CodeHash, env, msg, &prefixStore, cosmwasmAPI, &querier, k.gasMeter(ctx), gas)
+	res, gasUsed, err := k.wasmVM.Migrate(newCodeInfo.CodeHash, env, msg, &prefixStore, cosmwasmAPI, &querier, k.gasMeter(ctx), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if err != nil {
 		return nil, sdkerrors.Wrap(types.ErrMigrationFailed, err.Error())
@@ -393,7 +392,7 @@ func (k Keeper) migrate(ctx sdk.Context, contractAddress sdk.AccAddress, caller 
 	k.storeContractInfo(ctx, contractAddress, contractInfo)
 
 	// dispatch submessages then messages
-	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Submessages, res.Messages, res.Attributes, res.Data)
+	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Messages, res.Attributes, res.Data, res.Events)
 	if err != nil {
 		return nil, sdkerrors.Wrap(err, "dispatch")
 	}
@@ -418,14 +417,14 @@ func (k Keeper) Sudo(ctx sdk.Context, contractAddress sdk.AccAddress, msg []byte
 	// prepare querier
 	querier := k.newQueryHandler(ctx, contractAddress)
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, execErr := k.wasmVM.Sudo(codeInfo.CodeHash, env, msg, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas)
+	res, gasUsed, execErr := k.wasmVM.Sudo(codeInfo.CodeHash, env, msg, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return nil, sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
 	}
 
 	// dispatch submessages then messages
-	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Submessages, res.Messages, res.Attributes, res.Data)
+	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Messages, res.Attributes, res.Data, res.Events)
 	if err != nil {
 		return nil, sdkerrors.Wrap(err, "dispatch")
 	}
@@ -451,14 +450,14 @@ func (k Keeper) reply(ctx sdk.Context, contractAddress sdk.AccAddress, reply was
 		Plugins: k.wasmVMQueryHandler,
 	}
 	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, execErr := k.wasmVM.Reply(codeInfo.CodeHash, env, reply, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas)
+	res, gasUsed, execErr := k.wasmVM.Reply(codeInfo.CodeHash, env, reply, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas, costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if execErr != nil {
 		return nil, sdkerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
 	}
 
 	// dispatch submessages then messages
-	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Submessages, res.Messages, res.Attributes, res.Data)
+	data, err := k.handleContractResponse(ctx, contractAddress, contractInfo.IBCPortID, res.Messages, res.Attributes, res.Data, res.Events)
 	if err != nil {
 		return nil, sdkerrors.Wrap(err, "dispatch")
 	}
@@ -556,7 +555,7 @@ func (k Keeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []b
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	env := types.NewEnv(ctx, contractAddr)
-	queryResult, gasUsed, qErr := k.wasmVM.Query(codeInfo.CodeHash, env, req, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), k.runtimeGasForContract(ctx))
+	queryResult, gasUsed, qErr := k.wasmVM.Query(codeInfo.CodeHash, env, req, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), k.runtimeGasForContract(ctx), costJsonDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
 	if qErr != nil {
 		return nil, sdkerrors.Wrap(types.ErrQueryFailed, qErr.Error())
@@ -763,17 +762,21 @@ func (k *Keeper) handleContractResponse(
 	ctx sdk.Context,
 	contractAddr sdk.AccAddress,
 	ibcPort string,
-	subMsg []wasmvmtypes.SubMsg,
-	msgs []wasmvmtypes.CosmosMsg,
+	msgs []wasmvmtypes.SubMsg,
 	attrs []wasmvmtypes.EventAttribute,
 	data []byte,
+	evts wasmvmtypes.Events,
 ) ([]byte, error) {
-	attributeGasCost := k.gasRegister.EventCosts(attrs)
+	attributeGasCost := k.gasRegister.EventCosts(attrs, evts)
 	ctx.GasMeter().ConsumeGas(attributeGasCost, "Custom contract event attributes")
 	// emit all events from this contract itself
-	events := types.ParseEvents(attrs, contractAddr)
-	ctx.EventManager().EmitEvents(events)
-	return k.wasmVMResponseHandler.Handle(ctx, contractAddr, ibcPort, subMsg, msgs, data)
+	if len(attrs) != 0 || !hasWasmModuleEvent(ctx, contractAddr) {
+		ctx.EventManager().EmitEvents(newWasmModuleEvent(attrs, contractAddr))
+	}
+	if len(evts) > 0 {
+		ctx.EventManager().EmitEvents(newCustomEvents(evts, contractAddr))
+	}
+	return k.wasmVMResponseHandler.Handle(ctx, contractAddr, ibcPort, msgs, data)
 }
 
 func (k Keeper) runtimeGasForContract(ctx sdk.Context) uint64 {
@@ -952,7 +955,6 @@ func (c BankCoinTransferrer) TransferCoins(ctx sdk.Context, fromAddr sdk.AccAddr
 }
 
 type msgDispatcher interface {
-	DispatchMessages(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, msgs []wasmvmtypes.CosmosMsg) error
 	DispatchSubmessages(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, msgs []wasmvmtypes.SubMsg) ([]byte, error)
 }
 
@@ -968,21 +970,13 @@ func NewDefaultWasmVMContractResponseHandler(md msgDispatcher) *DefaultWasmVMCon
 }
 
 // Handle processes the data returned by a contract invocation.
-func (h DefaultWasmVMContractResponseHandler) Handle(
-	ctx sdk.Context,
-	contractAddr sdk.AccAddress,
-	ibcPort string,
-	submessages []wasmvmtypes.SubMsg,
-	messages []wasmvmtypes.CosmosMsg,
-	origRspData []byte,
-) ([]byte, error) {
+func (h DefaultWasmVMContractResponseHandler) Handle(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, messages []wasmvmtypes.SubMsg, origRspData []byte) ([]byte, error) {
 	result := origRspData
-	switch rsp, err := h.md.DispatchSubmessages(ctx, contractAddr, ibcPort, submessages); {
+	switch rsp, err := h.md.DispatchSubmessages(ctx, contractAddr, ibcPort, messages); {
 	case err != nil:
 		return nil, sdkerrors.Wrap(err, "submessages")
 	case rsp != nil:
 		result = rsp
 	}
-	// then dispatch all the normal messages
-	return result, sdkerrors.Wrap(h.md.DispatchMessages(ctx, contractAddr, ibcPort, messages), "messages")
+	return result, nil
 }

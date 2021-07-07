@@ -12,6 +12,9 @@ type MockMessageHandler struct {
 }
 
 func (m *MockMessageHandler) DispatchMsg(ctx sdk.Context, contractAddr sdk.AccAddress, contractIBCPortID string, msg wasmvmtypes.CosmosMsg) (events []sdk.Event, data [][]byte, err error) {
+	if m.DispatchMsgFn == nil {
+		panic("not expected to be called")
+	}
 	return m.DispatchMsgFn(ctx, contractAddr, contractIBCPortID, msg)
 }
 

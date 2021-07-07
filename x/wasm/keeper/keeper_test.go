@@ -284,7 +284,7 @@ func TestInstantiate(t *testing.T) {
 
 	gasAfter := ctx.GasMeter().GasConsumed()
 	if types.EnableGasVerification {
-		require.Equal(t, uint64(0x12324), gasAfter-gasBefore)
+		require.Equal(t, uint64(0x12361), gasAfter-gasBefore)
 	}
 
 	// ensure it is stored properly
@@ -443,7 +443,7 @@ func TestInstantiateWithContractDataResponse(t *testing.T) {
 	ctx, keepers := CreateTestInput(t, false, SupportedFeatures)
 
 	wasmerMock := &wasmtesting.MockWasmer{
-		InstantiateFn: func(codeID wasmvm.Checksum, env wasmvmtypes.Env, info wasmvmtypes.MessageInfo, initMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64) (*wasmvmtypes.Response, uint64, error) {
+		InstantiateFn: func(codeID wasmvm.Checksum, env wasmvmtypes.Env, info wasmvmtypes.MessageInfo, initMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (*wasmvmtypes.Response, uint64, error) {
 			return &wasmvmtypes.Response{Data: []byte("my-response-data")}, 0, nil
 		},
 		AnalyzeCodeFn: wasmtesting.WithoutIBCAnalyzeFn,
@@ -517,7 +517,7 @@ func TestExecute(t *testing.T) {
 	// make sure gas is properly deducted from ctx
 	gasAfter := ctx.GasMeter().GasConsumed()
 	if types.EnableGasVerification {
-		require.Equal(t, uint64(0x12939), gasAfter-gasBefore)
+		require.Equal(t, uint64(0x12afd), gasAfter-gasBefore)
 	}
 	// ensure bob now exists and got both payments released
 	bobAcct = accKeeper.GetAccount(ctx, bob)
@@ -1098,7 +1098,7 @@ func TestIterateContractsByCode(t *testing.T) {
 
 func TestIterateContractsByCodeWithMigration(t *testing.T) {
 	// mock migration so that it does not fail when migrate example1 to example2.codeID
-	mockWasmVM := wasmtesting.MockWasmer{MigrateFn: func(codeID wasmvm.Checksum, env wasmvmtypes.Env, migrateMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64) (*wasmvmtypes.Response, uint64, error) {
+	mockWasmVM := wasmtesting.MockWasmer{MigrateFn: func(codeID wasmvm.Checksum, env wasmvmtypes.Env, migrateMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (*wasmvmtypes.Response, uint64, error) {
 		return &wasmvmtypes.Response{}, 1, nil
 	}}
 	wasmtesting.MakeInstantiable(&mockWasmVM)
@@ -1402,10 +1402,10 @@ func TestPinnedContractLoops(t *testing.T) {
 	require.NoError(t, k.pinCode(ctx, example.CodeID))
 	var loops int
 	anyMsg := []byte(`{}`)
-	mock.ExecuteFn = func(codeID wasmvm.Checksum, env wasmvmtypes.Env, info wasmvmtypes.MessageInfo, executeMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64) (*wasmvmtypes.Response, uint64, error) {
+	mock.ExecuteFn = func(codeID wasmvm.Checksum, env wasmvmtypes.Env, info wasmvmtypes.MessageInfo, executeMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (*wasmvmtypes.Response, uint64, error) {
 		loops++
 		return &wasmvmtypes.Response{
-			Submessages: []wasmvmtypes.SubMsg{
+			Messages: []wasmvmtypes.SubMsg{
 				{
 					ID:      1,
 					ReplyOn: wasmvmtypes.ReplyError,
@@ -1431,10 +1431,6 @@ func TestPinnedContractLoops(t *testing.T) {
 }
 
 func TestNewDefaultWasmVMContractResponseHandler(t *testing.T) {
-	noopDMsgs := func(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, msgs []wasmvmtypes.CosmosMsg) error {
-		return nil
-	}
-
 	specs := map[string]struct {
 		srcData []byte
 		setup   func(m *wasmtesting.MockMsgDispatcher)
@@ -1447,7 +1443,6 @@ func TestNewDefaultWasmVMContractResponseHandler(t *testing.T) {
 				m.DispatchSubmessagesFn = func(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, msgs []wasmvmtypes.SubMsg) ([]byte, error) {
 					return []byte("mySubMsgData"), nil
 				}
-				m.DispatchMessagesFn = noopDMsgs
 			},
 			expErr:  false,
 			expData: []byte("mySubMsgData"),
@@ -1458,7 +1453,6 @@ func TestNewDefaultWasmVMContractResponseHandler(t *testing.T) {
 				m.DispatchSubmessagesFn = func(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, msgs []wasmvmtypes.SubMsg) ([]byte, error) {
 					return []byte(""), nil
 				}
-				m.DispatchMessagesFn = noopDMsgs
 			},
 			expErr:  false,
 			expData: []byte(""),
@@ -1469,7 +1463,6 @@ func TestNewDefaultWasmVMContractResponseHandler(t *testing.T) {
 				m.DispatchSubmessagesFn = func(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, msgs []wasmvmtypes.SubMsg) ([]byte, error) {
 					return nil, nil
 				}
-				m.DispatchMessagesFn = noopDMsgs
 			},
 			expErr:  false,
 			expData: []byte("otherData"),
@@ -1482,30 +1475,18 @@ func TestNewDefaultWasmVMContractResponseHandler(t *testing.T) {
 			},
 			expErr: true,
 		},
-		"message error aborts process": {
-			setup: func(m *wasmtesting.MockMsgDispatcher) {
-				m.DispatchSubmessagesFn = func(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, msgs []wasmvmtypes.SubMsg) ([]byte, error) {
-					return []byte("mySubMsgData"), nil
-				}
-				m.DispatchMessagesFn = func(ctx sdk.Context, contractAddr sdk.AccAddress, ibcPort string, msgs []wasmvmtypes.CosmosMsg) error {
-					return errors.New("test - ignore")
-				}
-			},
-			expErr: true,
-		},
 	}
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
 			var (
-				subMsgs []wasmvmtypes.SubMsg
-				msgs    []wasmvmtypes.CosmosMsg
+				msgs []wasmvmtypes.SubMsg
 			)
 			var mock wasmtesting.MockMsgDispatcher
 			spec.setup(&mock)
 			d := NewDefaultWasmVMContractResponseHandler(&mock)
 			// when
 
-			gotData, gotErr := d.Handle(sdk.Context{}, RandomAccountAddress(t), "ibc-port", subMsgs, msgs, spec.srcData)
+			gotData, gotErr := d.Handle(sdk.Context{}, RandomAccountAddress(t), "ibc-port", msgs, spec.srcData)
 			if spec.expErr {
 				require.Error(t, gotErr)
 				return

@@ -101,6 +101,39 @@ func TestDispatchSubmessages(t *testing.T) {
 				Attributes: []abci.EventAttribute{{Key: []byte("foo"), Value: []byte("bar")}},
 			}},
 		},
+		"with context events - released on commit": {
+			msgs: []wasmvmtypes.SubMsg{{
+				ReplyOn: wasmvmtypes.ReplyNever,
+			}},
+			replyer: &mockReplyer{},
+			msgHandler: &wasmtesting.MockMessageHandler{
+				DispatchMsgFn: func(ctx sdk.Context, contractAddr sdk.AccAddress, contractIBCPortID string, msg wasmvmtypes.CosmosMsg) (events []sdk.Event, data [][]byte, err error) {
+					myEvents := []sdk.Event{{Type: "myEvent", Attributes: []abci.EventAttribute{{Key: []byte("foo"), Value: []byte("bar")}}}}
+					ctx.EventManager().EmitEvents(myEvents)
+					return nil, nil, nil
+				},
+			},
+			expCommits: []bool{true},
+			expEvents: []sdk.Event{{
+				Type:       "myEvent",
+				Attributes: []abci.EventAttribute{{Key: []byte("foo"), Value: []byte("bar")}},
+			}},
+		},
+		"with context events - discarded on failure": {
+			msgs: []wasmvmtypes.SubMsg{{
+				ReplyOn: wasmvmtypes.ReplyNever,
+			}},
+			replyer: &mockReplyer{},
+			msgHandler: &wasmtesting.MockMessageHandler{
+				DispatchMsgFn: func(ctx sdk.Context, contractAddr sdk.AccAddress, contractIBCPortID string, msg wasmvmtypes.CosmosMsg) (events []sdk.Event, data [][]byte, err error) {
+					myEvents := []sdk.Event{{Type: "myEvent", Attributes: []abci.EventAttribute{{Key: []byte("foo"), Value: []byte("bar")}}}}
+					ctx.EventManager().EmitEvents(myEvents)
+					return nil, nil, errors.New("testing")
+				},
+			},
+			expCommits: []bool{false},
+			expErr:     true,
+		},
 		"reply returns error": {
 			msgs: []wasmvmtypes.SubMsg{{
 				ReplyOn: wasmvmtypes.ReplySuccess,
@@ -151,7 +184,38 @@ func TestDispatchSubmessages(t *testing.T) {
 			},
 			expCommits: []bool{true},
 		},
-		"multiple msg - last reply": {
+		"never reply - with nil response": {
+			msgs:    []wasmvmtypes.SubMsg{{ID: 1, ReplyOn: wasmvmtypes.ReplyNever}, {ID: 2, ReplyOn: wasmvmtypes.ReplyNever}},
+			replyer: &mockReplyer{},
+			msgHandler: &wasmtesting.MockMessageHandler{
+				DispatchMsgFn: func(ctx sdk.Context, contractAddr sdk.AccAddress, contractIBCPortID string, msg wasmvmtypes.CosmosMsg) (events []sdk.Event, data [][]byte, err error) {
+					return nil, [][]byte{nil}, nil
+				},
+			},
+			expCommits: []bool{true, true},
+		},
+		"never reply - with any non nil response": {
+			msgs:    []wasmvmtypes.SubMsg{{ID: 1, ReplyOn: wasmvmtypes.ReplyNever}, {ID: 2, ReplyOn: wasmvmtypes.ReplyNever}},
+			replyer: &mockReplyer{},
+			msgHandler: &wasmtesting.MockMessageHandler{
+				DispatchMsgFn: func(ctx sdk.Context, contractAddr sdk.AccAddress, contractIBCPortID string, msg wasmvmtypes.CosmosMsg) (events []sdk.Event, data [][]byte, err error) {
+					return nil, [][]byte{{}}, nil
+				},
+			},
+			expCommits: []bool{true, true},
+		},
+		"never reply - with error": {
+			msgs:    []wasmvmtypes.SubMsg{{ID: 1, ReplyOn: wasmvmtypes.ReplyNever}, {ID: 2, ReplyOn: wasmvmtypes.ReplyNever}},
+			replyer: &mockReplyer{},
+			msgHandler: &wasmtesting.MockMessageHandler{
+				DispatchMsgFn: func(ctx sdk.Context, contractAddr sdk.AccAddress, contractIBCPortID string, msg wasmvmtypes.CosmosMsg) (events []sdk.Event, data [][]byte, err error) {
+					return nil, [][]byte{{}}, errors.New("testing")
+				},
+			},
+			expCommits: []bool{false, false},
+			expErr:     true,
+		},
+		"multiple msg - last reply returned": {
 			msgs: []wasmvmtypes.SubMsg{{ID: 1, ReplyOn: wasmvmtypes.ReplyError}, {ID: 2, ReplyOn: wasmvmtypes.ReplyError}},
 			replyer: &mockReplyer{
 				replyFn: func(ctx sdk.Context, contractAddress sdk.AccAddress, reply wasmvmtypes.Reply) ([]byte, error) {
@@ -166,7 +230,7 @@ func TestDispatchSubmessages(t *testing.T) {
 			expData:    []byte("myReplyData:2"),
 			expCommits: []bool{false, false},
 		},
-		"multiple msg - last non nil reply to overwrite responose": {
+		"multiple msg - last non nil reply returned": {
 			msgs: []wasmvmtypes.SubMsg{{ID: 1, ReplyOn: wasmvmtypes.ReplyError}, {ID: 2, ReplyOn: wasmvmtypes.ReplyError}},
 			replyer: &mockReplyer{
 				replyFn: func(ctx sdk.Context, contractAddress sdk.AccAddress, reply wasmvmtypes.Reply) ([]byte, error) {
@@ -202,19 +266,6 @@ func TestDispatchSubmessages(t *testing.T) {
 			expData:    []byte{},
 			expCommits: []bool{false, false},
 		},
-		"empty replyOn rejected": {
-			msgs:       []wasmvmtypes.SubMsg{{}},
-			replyer:    noReplyCalled,
-			msgHandler: &wasmtesting.MockMessageHandler{},
-			expErr:     true,
-		},
-		"invalid replyOn rejected": {
-			msgs:       []wasmvmtypes.SubMsg{{ReplyOn: "invalid"}},
-			replyer:    noReplyCalled,
-			msgHandler: &wasmtesting.MockMessageHandler{},
-			expCommits: []bool{false},
-			expErr:     true,
-		},
 	}
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
@@ -227,6 +278,7 @@ func TestDispatchSubmessages(t *testing.T) {
 			gotData, gotErr := d.DispatchSubmessages(ctx, RandomAccountAddress(t), "any_port", spec.msgs)
 			if spec.expErr {
 				require.Error(t, gotErr)
+				assert.Empty(t, em.Events())
 				return
 			} else {
 				require.NoError(t, gotErr)
